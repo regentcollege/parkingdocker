@@ -1,51 +1,39 @@
-# Set the base image for subsequent instructions
-FROM php:8.0-apache
+FROM php:7-apache
+MAINTAINER codyrigg
 
-# Install dependencies
-RUN apt-get update && pecl install redis && apt-get install -y \
-    build-essential \
-    libpng-dev \
-    libjpeg62-turbo-dev \
-    libfreetype6-dev \
-    locales \
-    zip \
-    jpegoptim optipng pngquant gifsicle \
-    vim \
-    unzip \
-    git \
+RUN apt-get update && \
+    apt-get install -y vim \
     curl \
-    default-mysql-client \
-    libzip-dev \
-    libonig-dev \
+    unzip \
+    libpng-dev \
+    libfreetype6-dev \
+    libjpeg62-turbo-dev \
     zlib1g-dev \
     libicu-dev \
     g++ \
-    supervisor
-
+	libldap2-dev&& \
+    rm -rf /var/lib/apt/lists/* 
 	
-# Clear cache
-RUN apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN docker-php-ext-configure intl \
+    && docker-php-ext-install intl
 
-# Install extensions
-RUN docker-php-ext-install mysqli pdo_mysql zip exif pcntl opcache bcmath
-RUN docker-php-ext-configure gd --with-freetype --with-jpeg
-RUN docker-php-ext-install gd && docker-php-ext-enable opcache redis
-RUN docker-php-ext-configure intl
-RUN docker-php-ext-install intl
-
+RUN docker-php-ext-install -j$(nproc) mysqli pdo pdo_mysql \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install -j$(nproc) gd
+    
 # Install composer
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
-COPY ./config/laravel.conf /etc/apache2/sites-available/laravel.conf
-COPY ./config/laravel.php.ini /usr/local/etc/php/conf.d/laravel.php.ini
-COPY ./config/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-COPY start.sh /usr/local/bin/start
-
-RUN mkdir -p /var/www/zoom-recordings/current/public
-
-RUN a2ensite laravel.conf && a2dissite 000-default.conf && chmod u+x /usr/local/bin/start && a2enmod rewrite
+RUN mkdir /var/www/parking && chown www-data: /var/www/parking -R && \
+    chmod 0755 /var/www/parking -R
 	
-# Setup working directory
-WORKDIR /var/www/zoom-recordings
+COPY ./config/parking.conf /etc/apache2/sites-available/parking.conf
+RUN mkdir -p /var/www/parking/current
 
-CMD ["/usr/local/bin/start"]
+RUN a2ensite parking.conf && a2dissite 000-default.conf && a2enmod rewrite
+
+WORKDIR /var/www/parking
+
+EXPOSE 80
+
+CMD ["apache2-foreground"]
